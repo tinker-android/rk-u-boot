@@ -519,6 +519,12 @@ pack_uboot_image()
 	echo "pack uboot okay! Input: ${OUTDIR}/u-boot.bin"
 }
 
+pack_idb_image()
+{
+	tools/mkimage -n "$BOARD" -T rksd -d $RKBIN/bin/rk33/rk3399_ddr_800MHz_v1.18.bin idbloader.img
+	cat $RKBIN/bin/rk33/rk3399_miniloader_v1.18.bin >> idbloader.img
+}
+
 pack_loader_image()
 {
 	local mode=$1 files ini
@@ -623,5 +629,6 @@ sub_commands
 make CROSS_COMPILE=${TOOLCHAIN_GCC}  all --jobs=${JOB} ${OUTOPT}
 pack_uboot_image
 pack_loader_image
+pack_idb_image
 pack_trust_image
 finish
