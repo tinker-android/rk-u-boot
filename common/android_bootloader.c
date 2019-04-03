@@ -45,6 +45,12 @@
 #define OEM_UNLOCK_ARG_SIZE 30
 #define UUID_SIZE 37
 
+#define RK_ANDROID_DTBO_SD_BOOT 1
+#define RK_ANDROID_DTBO_USB_BOOT 2
+#define RK_ANDROID_DTBO_NVME_BOOT 3
+
+#define ANDROID_DTBO_ID_START 17
+
 #if defined(CONFIG_ANDROID_AB) && !defined(CONFIG_ANDROID_AVB)
 static int get_partition_unique_uuid(char *partition,
 				     char *guid_buf,
@@ -626,6 +632,30 @@ __weak int board_select_fdt_index(ulong dt_table_hdr)
 	return 0;
 }
 
+/*
+ * Default return index 17.
+ */
+__weak int board_select_fdt_ids(ulong dt_table_hdr)
+{
+/*
+ * User can use "dt_for_each_entry(entry, hdr, idx)" to iterate
+ * over all dt entry of DT image and pick up which they want.
+ *
+ * Example:
+ *	struct dt_table_entry *entry;
+ *	int index;
+ *
+ *	dt_for_each_entry(entry, dt_table_hdr, index) {
+ *
+ *		.... (use entry)
+ *	}
+ *
+ *	return index;
+ */
+	return ANDROID_DTBO_ID_START;
+}
+
+#if 0
 static int android_get_dtbo(ulong *fdt_dtbo,
 			    const struct andr_img_hdr *hdr,
 			    int *index)
@@ -741,6 +771,151 @@ out1:
 
 	return ret;
 }
+#endif
+
+int select_boot_device_dtbo_id(struct blk_desc *dev_desc){
+    printf("%s: boot device = %d:%d\n", __func__, dev_desc->if_type, dev_desc->devnum);
+	if(dev_desc->if_type == IF_TYPE_MMC && dev_desc->devnum == 1){
+		return RK_ANDROID_DTBO_SD_BOOT;
+	}
+	if(dev_desc->if_type == IF_TYPE_SD){
+        return RK_ANDROID_DTBO_SD_BOOT;
+    }
+
+    if(dev_desc->if_type == IF_TYPE_NVME){
+        return RK_ANDROID_DTBO_NVME_BOOT;
+    }
+
+    if(dev_desc->if_type == IF_TYPE_USB){
+        return RK_ANDROID_DTBO_USB_BOOT;
+    }
+
+    return -1;
+}
+
+int apply_android_dtbo(void *fdt_addr, ulong fdt_dtbo){
+
+    phys_size_t fdt_size;
+    /* Must incease size before overlay */
+    fdt_size = fdt_totalsize((void *)fdt_addr) + fdt_totalsize((void *)fdt_dtbo);
+    if (sysmem_free((phys_addr_t)fdt_addr)){
+        printf("%s: sysmem_free error!", __func__);
+        return -1;
+    }
+
+    if (!sysmem_alloc_base("fdt(dtbo)", (phys_addr_t)fdt_addr,
+                           fdt_size + CONFIG_SYS_FDT_PAD)){
+        printf("%s: sysmem_alloc_base error!", __func__);
+        return -1;
+    }
+    fdt_increase_size(fdt_addr, fdt_totalsize((void *)fdt_dtbo));
+    return fdt_overlay_apply(fdt_addr, (void *)fdt_dtbo);
+}
+
+void apply_android_dtbo_by_ids(void *fdt_addr, const struct andr_img_hdr *hdr){
+	struct dt_table_header *dt_hdr = NULL;
+	struct blk_desc *dev_desc;
+	const char *part_name;
+	void *buf;
+	disk_partition_t part_info;
+	u32 blk_offset, blk_cnt;
+	int ret, id;
+	ulong e_addr;
+	u32 e_size;
+	char boot_arg[32] = {0};
+
+	/* Get partition according to boot mode */
+	if (rockchip_get_boot_mode() == BOOT_MODE_RECOVERY)
+		part_name = PART_RECOVERY;
+	else
+		part_name = PART_DTBO;
+
+	/* Get partition info */
+	dev_desc = rockchip_get_bootdev();
+	if (!dev_desc) {
+		printf("%s: dev_desc is NULL!\n", __func__);
+		return;
+	}
+
+	ret = part_get_info_by_name(dev_desc, part_name, &part_info);
+	if (ret < 0) {
+		printf("%s: failed to get %s part info, ret=%d\n",
+			   __func__, part_name, ret);
+		return;
+	}
+
+	/* Check dt table header */
+	if (!strcmp(part_name, PART_RECOVERY))
+		blk_offset = part_info.start + (hdr->recovery_dtbo_offset / part_info.blksz);
+	else
+		blk_offset = part_info.start;
+
+	dt_hdr = memalign(ARCH_DMA_MINALIGN, part_info.blksz);
+	if (!dt_hdr) {
+		printf("%s: out of memory for dt header!\n", __func__);
+		return;
+	}
+
+	ret = blk_dread(dev_desc, blk_offset, 1, dt_hdr);
+	if (ret != 1) {
+		printf("%s: failed to read dt table header\n",
+			   __func__);
+		goto out1;
+	}
+
+	if (!android_dt_check_header((ulong)dt_hdr)) {
+		printf("%s: Error: invalid dt table header: 0x%x\n",
+			   __func__, dt_hdr->magic);
+		ret = -EINVAL;
+		goto out1;
+	}
+
+#ifdef DEBUG
+	android_dt_print_contents((ulong)dt_hdr);
+#endif
+
+	blk_cnt = DIV_ROUND_UP(fdt32_to_cpu(dt_hdr->total_size), part_info.blksz);
+	/* Read all DT Image */
+	buf = memalign(ARCH_DMA_MINALIGN, part_info.blksz * blk_cnt);
+	if (!buf) {
+		printf("%s: out of memory for %s part!\n", __func__, part_name);
+		goto out1;
+	}
+
+	ret = blk_dread(dev_desc, blk_offset, blk_cnt, buf);
+	if (ret != blk_cnt) {
+		printf("%s: failed to read dtbo, blk_cnt=%d, ret=%d\n", __func__, blk_cnt, ret);
+		goto out2;
+	}
+
+	id = select_boot_device_dtbo_id(dev_desc);
+	if(android_dt_get_fdt_by_id((ulong)buf, (u32) id, &e_addr, &e_size)){
+		printf("ANDROID: apply boot device dtbo,id=%d\n", id);
+
+		if(!apply_android_dtbo(fdt_addr, e_addr)){
+			snprintf(boot_arg, 32, "%s%d", "androidboot.dtbo_idx=", id);
+			printf("ANDROID: fdt boot device overlay OK\n");
+		}
+	}
+
+	id = board_select_fdt_ids((ulong) buf);
+	if(android_dt_get_fdt_by_id((ulong)buf, (u32) id, &e_addr, &e_size)){
+		printf("ANDROID: apply dtbo,id=%d\n", id);
+		if(!apply_android_dtbo(fdt_addr, e_addr)){
+			snprintf(boot_arg, 32, "%s,%d", boot_arg, id);
+			printf("ANDROID: fdt overlay OK, id=%d\n", id);
+		}
+	}
+
+	if(boot_arg[0] != 0){
+		env_update("bootargs", boot_arg);
+	}
+
+out2:
+	free(buf);
+out1:
+	free(dt_hdr);
+}
 
 int android_fdt_overlay_apply(void *fdt_addr)
 {
@@ -748,10 +923,7 @@ int android_fdt_overlay_apply(void *fdt_addr)
 	struct blk_desc *dev_desc;
 	const char *part_name;
 	disk_partition_t part_info;
-	char buf[32] = {0};
 	u32 blk_cnt;
-	ulong fdt_dtbo = -1;
-	int index = -1;
 	int ret;
 
 	/* Get partition according to boot mode */
@@ -803,10 +975,11 @@ int android_fdt_overlay_apply(void *fdt_addr)
 		goto out;
 	}
 
+	/*
 	ret = android_get_dtbo(&fdt_dtbo, (void *)hdr, &index);
 	if (!ret) {
 		phys_size_t fdt_size;
-		/* Must incease size before overlay */
+		 Must incease size before overlay
 		fdt_size = fdt_totalsize((void *)fdt_addr) +
 				fdt_totalsize((void *)fdt_dtbo);
 		if (sysmem_free((phys_addr_t)fdt_addr))
@@ -825,8 +998,9 @@ int android_fdt_overlay_apply(void *fdt_addr)
 		} else {
 			printf("ANDROID: fdt overlay failed, ret=%d\n", ret);
 		}
-	}
+	}*/
 
+	apply_android_dtbo_by_ids(fdt_addr, hdr);
 out:
 	free(hdr);
 

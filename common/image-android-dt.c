@@ -74,6 +74,52 @@ bool android_dt_get_fdt_by_index(ulong hdr_addr, u32 index, ulong *addr,
 	return true;
 }
 
+/**
+ * Get the address of FDT (dtb or dtbo) in memory by its id in image.
+ *
+ * @param hdr_addr Start address of DT image
+ * @param id Id of desired FDT in image (starting from 0)
+ * @param[out] addr If not NULL, will contain address to specified FDT
+ * @param[out] size If not NULL, will contain size of specified FDT
+ *
+ * @return true on success or false on error
+ */
+bool android_dt_get_fdt_by_id(ulong hdr_addr, u32 id, ulong *addr, u32 *size)
+{
+	const struct dt_table_header *hdr;
+	const struct dt_table_entry *e;
+	u32 entry_count, entries_offset, entry_size;
+	ulong e_addr;
+	u32 dt_id, dt_offset, dt_size;
+
+	hdr = map_sysmem(hdr_addr, sizeof(*hdr));
+	entry_count = fdt32_to_cpu(hdr->dt_entry_count);
+	entries_offset = fdt32_to_cpu(hdr->dt_entries_offset);
+	entry_size = fdt32_to_cpu(hdr->dt_entry_size);
+	unmap_sysmem(hdr);
+
+	/* Print image entries info */
+	for (int i = 0; i < entry_count; ++i) {
+		e_addr = hdr_addr + entries_offset + i * entry_size;
+		e = map_sysmem(e_addr, sizeof(*e));
+		dt_id = fdt32_to_cpu(e->id);
+		if(dt_id == id){
+			dt_offset = fdt32_to_cpu(e->dt_offset);
+			dt_size = fdt32_to_cpu(e->dt_size);
+			unmap_sysmem(e);
+			if (addr)
+				*addr = hdr_addr + dt_offset;
+			if (size)
+				*size = dt_size;
+			return true;
+		}
+		unmap_sysmem(e);
+	}
+
+
+	return false;
+}
+
 #if !defined(CONFIG_SPL_BUILD)
 static void android_dt_print_fdt_info(const struct fdt_header *fdt)
 {
