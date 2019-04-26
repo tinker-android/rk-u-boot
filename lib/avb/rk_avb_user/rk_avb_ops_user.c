@@ -266,7 +266,7 @@ int rk_avb_read_lock_state(uint8_t *lock_state)
 	case TEE_ERROR_GENERIC:
 	case TEE_ERROR_NO_DATA:
 	case TEE_ERROR_ITEM_NOT_FOUND:
-		*lock_state = 1;
+		*lock_state = 0;
 		if (rk_avb_write_lock_state(*lock_state)) {
 			avb_error("avb_write_lock_state error!");
 			ret = -1;
