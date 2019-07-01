@@ -819,7 +819,7 @@ int apply_android_dtbo(void *fdt_addr, ulong fdt_dtbo){
         return -1;
     }
 
-    if (!sysmem_alloc_base("fdt(dtbo)", (phys_addr_t)fdt_addr,
+    if (!sysmem_alloc_base_by_name("fdt(dtbo)", (phys_addr_t)fdt_addr,
                            fdt_size + CONFIG_SYS_FDT_PAD)){
         printf("%s: sysmem_alloc_base error!", __func__);
         return -1;
