@@ -543,8 +543,8 @@ pack_uboot_image()
 
 pack_idb_image()
 {
-	tools/mkimage -n "$BOARD" -T rksd -d $RKBIN/bin/rk33/rk3399_ddr_800MHz_v1.18.bin idbloader.img
-	cat $RKBIN/bin/rk33/rk3399_miniloader_v1.18.bin >> idbloader.img
+	tools/mkimage -n "$BOARD" -T rksd -d $RKBIN/bin/rk33/rk3399_ddr_800MHz_v1.22.bin idbloader.img
+	cat $RKBIN/bin/rk33/rk3399_miniloader_v1.19.bin >> idbloader.img
 }
 
 pack_loader_image()
