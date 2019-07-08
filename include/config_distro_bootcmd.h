@@ -68,6 +68,25 @@
 	BOOT_TARGET_DEVICES_references_MMC_without_CONFIG_CMD_MMC
 #endif
 
+#if ((defined CONFIG_CMD_NVME)&&(defined CONFIG_CMD_CACHE)&&(defined CONFIG_CMD_PCI))
+#define BOOTENV_SHARED_NVME  BOOTENV_SHARED_BLKDEV(nvme)
+#define BOOTENV_DEV_NVME(devtypeu, devtypel, instance) \
+	"bootcmd_nvme=" \
+		"dcache off;" \
+		"pci e;" \
+		"nvme scan;" \
+		"setenv devnum 0;" \
+		"run nvme_boot;" \
+		"\0"
+#define BOOTENV_DEV_NAME_NVME(devtypeu, devtypel, instance)  "nvme "
+#else
+#define BOOTENV_SHARED_NVME
+#define BOOTENV_DEV_NVME(devtypeu, devtypel, instance) \
+	BOOT_TARGET_DEVICES_references_NVME_without_CONFIG_CMD_NVME
+#define BOOTENV_DEV_NAME_NVME(devtypeu, devtypel, instance) \
+	BOOT_TARGET_DEVICES_references_NVME_without_CONFIG_CMD_NVME
+#endif
+
 #ifdef CONFIG_CMD_UBIFS
 #define BOOTENV_SHARED_UBIFS \
 	"ubifs_boot=" \
@@ -314,6 +333,7 @@
 	BOOTENV_DEV_##devtypeu(devtypeu, devtypel, instance)
 #define BOOTENV \
 	BOOTENV_SHARED_HOST \
+	BOOTENV_SHARED_NVME \
 	BOOTENV_SHARED_MMC \
 	BOOTENV_SHARED_PCI \
 	BOOTENV_SHARED_USB \

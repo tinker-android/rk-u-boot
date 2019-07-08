@@ -70,12 +70,25 @@
 	#define BOOT_TARGET_DHCP(func)
 #endif
 
+#if (CONFIG_IS_ENABLED(CMD_NVME) && CONFIG_IS_ENABLED(CMD_CACHE) && CONFIG_IS_ENABLED(CMD_PCI))
+	#define BOOT_TARGET_NVME(func) func(NVME, nvme, na)
+#else
+	#define BOOT_TARGET_NVME(func)
+#endif
+
 #define BOOT_TARGET_DEVICES(func) \
+	BOOT_TARGET_NVME(func) \
 	BOOT_TARGET_MMC(func) \
 	BOOT_TARGET_RKNAND(func) \
 	BOOT_TARGET_USB(func) \
 	BOOT_TARGET_PXE(func) \
 	BOOT_TARGET_DHCP(func)
+
+#ifdef CONFIG_ARM64
+#define FDTFILE "rockchip/" CONFIG_DEFAULT_DEVICE_TREE ".dtb" "\0"
+#else
+#define FDTFILE CONFIG_DEFAULT_DEVICE_TREE ".dtb" "\0"
+#endif
 
 #ifdef CONFIG_ARM64
 #define ROOT_UUID "B921B045-1DF0-41C3-AF44-4C6F280D3FAE;\0"
@@ -111,6 +124,11 @@
 
 #define RKIMG_DET_BOOTDEV \
 	"rkimg_bootdev=" \
+	"dcache off; echo dcache off; pci e;nvme scan;"	\
+	"if nvme dev 0; then " \
+		"setenv devtype nvme; setenv devnum 0;" \
+	"else " \
+	"dcache on; echo dcache on;" \
 	"if mmc dev 1 && rkimgtest mmc 1; then " \
 		"setenv devtype mmc; setenv devnum 1; echo Boot from SDcard;" \
 	"elif mmc dev 0; then " \
@@ -121,6 +139,7 @@
 		"setenv devtype spinand; setenv devnum 0;" \
 	"elif rksfc dev 1; then " \
 		"setenv devtype spinor; setenv devnum 1;" \
+	"fi;" \
 	"fi; \0"
 
 #ifdef CONFIG_AVB_VBMETA_PUBLIC_KEY_VALIDATE
@@ -131,9 +150,9 @@
 	"fastboot usb 0;"
 #else
 #define RKIMG_BOOTCOMMAND \
+	"run distro_bootcmd;" \
 	"boot_android ${devtype} ${devnum};" \
-	"bootrkp;" \
-	"run distro_bootcmd;"
+	"bootrkp;"
 #endif
 #endif
 

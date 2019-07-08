@@ -58,6 +58,8 @@
 #define ENV_MEM_LAYOUT_SETTINGS \
 	"scriptaddr=0x00500000\0" \
 	"pxefile_addr_r=0x00600000\0" \
+	"hw_conf_addr_r=0x00700000\0" \
+	"fdt_overlay_addr_r=0x08200000\0" \
 	"fdt_addr_r=0x08300000\0" \
 	"kernel_addr_r=0x00280000\0" \
 	"ramdisk_addr_r=0x0a200000\0"
@@ -65,6 +67,7 @@
 #include <config_distro_bootcmd.h>
 #define CONFIG_EXTRA_ENV_SETTINGS \
 	ENV_MEM_LAYOUT_SETTINGS \
+	"fdtfile=" FDTFILE \
 	"partitions=" PARTS_DEFAULT \
 	ROCKCHIP_DEVICE_SETTINGS \
 	RKIMG_DET_BOOTDEV \

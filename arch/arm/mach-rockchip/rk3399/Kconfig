@@ -31,6 +31,14 @@ config TARGET_PUMA_RK3399
 
 endchoice
 
+config TARGET_ROCKPI4_RK3399
+	bool "ROCK PI 4 Board"
+	help
+	  ROCK Pi 4 is a Rockchip RK3399 based SBC(Single Board Computer) by Radxa.
+	  It includes Ethernet, HDMI, MIPI DSI, MIPI CSI, 4 USB, micro-SD, audio,
+	  PCIe, WiFi, BT, RTC, etc. There is also an expansion interface
+	  which provides access to many pins.
+
 config SYS_SOC
 	default "rockchip"
 

@@ -15,11 +15,15 @@
 #include <linux/list.h>
 #include <fs.h>
 #include <asm/io.h>
+#include <version.h>
 
 #include "menu.h"
 #include "cli.h"
 
 #define MAX_TFTP_PATH_LEN 127
+#define NO_DEFINE	2
+#define VALUE_ON 	1
+#define VALUE_OFF 	0
 
 const char *pxe_default_paths[] = {
 #ifdef CONFIG_SYS_SOC
@@ -32,12 +36,58 @@ const char *pxe_default_paths[] = {
 
 static bool is_pxe;
 
+#define DTS_OVERLAY_PROPERTY_LENGTH 10
+#define DTS_OVERLAY_PREFIX "/overlays/"
+#define DTS_PREFIX_LENGTH 10
+
+#define MAX_OVERLAY_NAME_LENGTH 128
+#define MAX_DTS_OVERLAY_NUMBER 16
+//#define MAX_DTBO_PARAM_NUNBER 16
+
+//struct dtbo_param_array
+//{
+//	int dtbo_param_number;
+//	char dtbo_param_name[MAX_OVERLAY_NAME_LENGTH];
+//}
+
+struct dts_overlay_array
+{
+	int dtbo_number; //0 to (MAX_OVERLAY_NAME_LENGTH-1)
+	char dtbo_name[MAX_OVERLAY_NAME_LENGTH];
+//	int dtbo_param:1; // flag: 0 1
+//	struct dtbo_param_array dtbo_param_name[MAX_DTBO_PARAM_NUNBER];
+};
+#ifdef CONFIG_OF_LIBFDT_OVERLAY
+#ifdef CONFIG_TARGET_ROCKPI4_RK3399
+struct hw_config
+{
+	int valid;
+	int pwm0;
+	int pwm1;
+	int uart2;
+	int uart4;
+	int spi1;
+	int spi2;
+	int i2c2;
+	int i2c6;
+	int i2c7;
+	struct dts_overlay_array dts_overlay[MAX_DTS_OVERLAY_NUMBER];
+	int dts_overlay_count;
+};
+#else
+struct hw_config
+{
+	int valid;
+};
+#endif
+extern void parse_hw_config(cmd_tbl_t *cmdtp, struct hw_config *hw_conf);
+#endif
 /*
  * Like env_get, but prints an error if envvar isn't defined in the
  * environment.  It always returns what env_get does, so it can be used in
  * place of env_get without changing error handling otherwise.
  */
-static char *from_env(const char *envvar)
+char *from_env(const char *envvar)
 {
 	char *ret;
 
@@ -189,7 +239,7 @@ static int do_get_any(cmd_tbl_t *cmdtp, const char *file_path, char *file_addr)
  *
  * Returns 1 for success, or < 0 on error.
  */
-static int get_relfile(cmd_tbl_t *cmdtp, const char *file_path,
+int get_relfile(cmd_tbl_t *cmdtp, const char *file_path,
 	unsigned long file_addr)
 {
 	size_t path_len;
@@ -598,6 +648,285 @@ static int label_localboot(struct pxe_label *label)
 	return run_command_list(localcmd, strlen(localcmd), 0);
 }
 
+#ifdef CONFIG_OF_LIBFDT_OVERLAY
+#ifdef CONFIG_TARGET_ROCKPI4_RK3399
+static int set_hw_property(struct fdt_header *working_fdt, char *path, char *property, char *value, int length)
+{
+	int offset;
+	int ret;
+
+	//printf("set_hw_property: %s %s\n", path, property);
+	offset = fdt_path_offset (working_fdt, path);
+	if (offset < 0)
+	{
+		printf("libfdt fdt_path_offset() returned %s\n", fdt_strerror(offset));
+		return -1;
+	}
+	ret = fdt_setprop(working_fdt, offset, property, value, length);
+	if (ret < 0)
+	{
+		printf("libfdt fdt_setprop(): %s\n", fdt_strerror(ret));
+		return -1;
+	}
+
+	return 0;
+}
+
+static struct fdt_header *resize_working_fdt(void)
+{
+	struct fdt_header *working_fdt;
+	unsigned long file_addr;
+	char *envaddr;
+	int err;
+
+	envaddr = from_env("fdt_addr_r");
+
+	if (!envaddr)
+	{
+		printf("Can't get fdt address\n");
+		return NULL;
+	}
+
+	if (strict_strtoul(envaddr, 16, &file_addr) < 0)
+		return NULL;
+
+	working_fdt = map_sysmem(file_addr, 0);
+	err = fdt_open_into(working_fdt, working_fdt, (1024 * 1024));
+	if (err != 0)
+	{
+		printf("libfdt fdt_open_into(): %s\n", fdt_strerror(err));
+		return NULL;
+	}
+
+	printf("fdt addr %p\n", working_fdt);
+	printf("fdt magic number %x\n", working_fdt->magic);
+	printf("fdt size %u\n", fdt_totalsize(working_fdt));
+
+	return working_fdt;
+}
+
+static int fdt_valid(struct fdt_header **blobp)
+{
+	const void *blob = *blobp;
+	int err;
+
+	if (blob == NULL) {
+		printf ("The address of the fdt is invalid (NULL).\n");
+		return 0;
+	}
+
+	err = fdt_check_header(blob);
+	if (err == 0)
+		return 1;	/* valid */
+
+	if (err < 0) {
+		printf("libfdt fdt_check_header(): %s", fdt_strerror(err));
+		/*
+		 * Be more informative on bad version.
+		 */
+		if (err == -FDT_ERR_BADVERSION) {
+			if (fdt_version(blob) <
+			    FDT_FIRST_SUPPORTED_VERSION) {
+				printf (" - too old, fdt %d < %d",
+					fdt_version(blob),
+					FDT_FIRST_SUPPORTED_VERSION);
+			}
+			if (fdt_last_comp_version(blob) >
+			    FDT_LAST_SUPPORTED_VERSION) {
+				printf (" - too new, fdt %d > %d",
+					fdt_version(blob),
+					FDT_LAST_SUPPORTED_VERSION);
+			}
+		}
+		printf("\n");
+		*blobp = NULL;
+		return 0;
+	}
+	return 1;
+}
+static int merge_dts_overlay(cmd_tbl_t *cmdtp, struct fdt_header *working_fdt, char *overlay_name)
+{
+	unsigned long file_addr;
+	char *envaddr;
+	struct fdt_header *blob;
+	int ret;
+
+	printf("merge_dts_overlay\n");
+	envaddr = from_env("fdt_overlay_addr_r");
+	if (!envaddr)
+		goto fail;
+
+	if (strict_strtoul(envaddr, 16, &file_addr) < 0)
+		goto fail;
+
+	if(get_relfile(cmdtp, overlay_name, file_addr) < 0)
+		goto fail;
+
+	blob = map_sysmem(file_addr, 0);
+	if (!fdt_valid(&blob))
+	{
+		printf("overlay dtb(0x%p) is invalid\n", (void *)blob);
+		goto fail;
+	}
+	else
+	{
+		printf("overlay dtb(0x%p) is valid\n", (void *)blob);
+	}
+
+	printf("fdt_overlay_apply %p %p\n", (void *)working_fdt, (void *)blob);
+	ret = fdt_overlay_apply(working_fdt, blob);
+	if (ret) {
+		printf("fdt_overlay_apply(): %s\n", fdt_strerror(ret));
+		goto fail;
+	}
+
+	return 0;
+
+fail:
+	printf("Can't load dts overlay\n");
+	return -1;
+}
+
+static void handle_hw_conf(cmd_tbl_t *cmdtp, struct fdt_header *working_fdt, struct hw_config *hw_conf)
+{
+	int i = 0;
+
+	if(working_fdt == NULL)
+		return;
+
+	if(hw_conf->dts_overlay_count)
+	{
+		for (i = 0; i < hw_conf->dts_overlay_count; i++)
+		{
+			if(merge_dts_overlay(cmdtp, working_fdt, hw_conf->dts_overlay[i].dtbo_name) < 0)
+			{
+				printf("Can not merge dts overlay\n");
+				return;
+			}
+		}
+	}
+#ifdef CONFIG_TARGET_ROCKPI4_RK3399
+	if(hw_conf->pwm0 == VALUE_ON)
+	{
+		set_hw_property(working_fdt, "/pwm@ff420000", "status", "okay", 5);
+	}
+	else if(hw_conf->pwm0 == VALUE_OFF)
+	{
+		set_hw_property(working_fdt, "/pwm@ff420000", "status", "disabled", 9);
+	}
+	else
+	{
+		//default disable
+		set_hw_property(working_fdt, "/pwm@ff420000", "status", "disabled", 9);
+	}
+
+	if(hw_conf->pwm1 == VALUE_ON)
+	{
+		set_hw_property(working_fdt, "/pwm@ff420010", "status", "okay", 5);
+	}
+	else if(hw_conf->pwm1 == VALUE_OFF)
+	{
+		set_hw_property(working_fdt, "/pwm@ff420010", "status", "disabled", 9);
+	}
+	else
+	{
+		//default disable
+		set_hw_property(working_fdt, "/pwm@ff420010", "status", "disabled", 9);
+	}
+
+	if(hw_conf->uart2 == VALUE_ON)
+	{
+		set_hw_property(working_fdt, "/serial@ff1a0000", "status", "okay", 5);
+	}
+	else if(hw_conf->uart2 == VALUE_OFF)
+	{
+		set_hw_property(working_fdt, "/serial@ff1a0000", "status", "disabled", 9);
+	}
+	else
+	{
+		//default disable
+		set_hw_property(working_fdt, "/serial@ff1a0000", "status", "disabled", 9);
+	}
+
+	/*UART4 has higher priority*/
+	if(hw_conf->uart4 == VALUE_ON)
+	{
+		set_hw_property(working_fdt, "/spi@ff1d0000", "status", "disabled", 9);
+		set_hw_property(working_fdt, "/serial@ff370000", "status", "okay", 5);
+	}
+	else if ( hw_conf->uart4 == VALUE_OFF && hw_conf->spi1 == VALUE_ON)
+	{
+		set_hw_property(working_fdt, "/spi@ff1d0000", "status", "okay", 5);
+		set_hw_property(working_fdt, "/serial@ff370000", "status", "disabled", 9);
+	}
+	else if ( hw_conf->uart4 == VALUE_OFF && hw_conf->spi1 == VALUE_OFF)
+	{
+		set_hw_property(working_fdt, "/spi@ff1d0000", "status", "disabled", 9);
+		set_hw_property(working_fdt, "/serial@ff370000", "status", "disabled", 9);
+	}
+	else
+	{
+		//default disable
+		set_hw_property(working_fdt, "/spi@ff1d0000", "status", "disabled", 9);
+		set_hw_property(working_fdt, "/serial@ff370000", "status", "disabled", 9);
+	}
+
+	/*I2C6 has higher priority*/
+	if(hw_conf->i2c6 == VALUE_ON)
+	{
+		set_hw_property(working_fdt, "/spi@ff1e0000", "status", "disabled", 9);
+		set_hw_property(working_fdt, "/i2c@ff150000", "status", "okay", 5);
+	}
+	else if ( hw_conf->i2c6 == VALUE_OFF && hw_conf->spi2 == VALUE_ON)
+	{
+		set_hw_property(working_fdt, "/spi@ff1e0000", "status", "okay", 5);
+		set_hw_property(working_fdt, "/i2c@ff150000", "status", "disabled", 9);
+	}
+	else if ( hw_conf->i2c6 == VALUE_OFF && hw_conf->spi2 == VALUE_OFF)
+	{
+		set_hw_property(working_fdt, "/spi@ff1e0000", "status", "disabled", 9);
+		set_hw_property(working_fdt, "/i2c@ff150000", "status", "disabled", 9);
+	}
+	else
+	{
+		//default disable
+		set_hw_property(working_fdt, "/spi@ff1e0000", "status", "disabled", 9);
+		set_hw_property(working_fdt, "/i2c@ff150000", "status", "disabled", 9);
+	}
+
+	if(hw_conf->i2c2 == VALUE_ON)
+	{
+		set_hw_property(working_fdt, "/i2c@ff120000", "status", "okay", 5);
+	}
+	else if(hw_conf->i2c2 == VALUE_OFF)
+	{
+		set_hw_property(working_fdt, "/i2c@ff120000", "status", "disabled", 9);
+	}
+	else
+	{
+		//default disable
+		set_hw_property(working_fdt, "/i2c@ff120000", "status", "disabled", 9);
+	}
+
+
+	if(hw_conf->i2c7 == VALUE_ON)
+	{
+		set_hw_property(working_fdt, "/i2c@ff160000", "status", "okay", 5);
+	}
+	else if(hw_conf->i2c7 == VALUE_OFF)
+	{
+		set_hw_property(working_fdt, "/i2c@ff160000", "status", "disabled", 9);
+	}
+	else
+	{
+		//default disable
+		set_hw_property(working_fdt, "/i2c@ff160000", "status", "disabled", 9);
+	}
+#endif
+}
+#endif
+#endif
+
 /*
  * Boot according to the contents of a pxe_label.
  *
@@ -623,7 +952,47 @@ static int label_boot(cmd_tbl_t *cmdtp, struct pxe_label *label)
 	int len = 0;
 	ulong kernel_addr;
 	void *buf;
+#ifdef CONFIG_OF_LIBFDT_OVERLAY
+#ifdef CONFIG_TARGET_ROCKPI4_RK3399
+	struct hw_config hw_conf;
+	int i;
 
+	memset(&hw_conf, 0, sizeof(struct hw_config));
+	hw_conf.pwm0 = NO_DEFINE;
+	hw_conf.pwm1 = NO_DEFINE;
+	hw_conf.uart2 = NO_DEFINE;
+	hw_conf.uart4 = NO_DEFINE;
+	hw_conf.spi1 = NO_DEFINE;
+	hw_conf.spi2 = NO_DEFINE;
+	hw_conf.i2c2 = NO_DEFINE;
+	hw_conf.i2c6 = NO_DEFINE;
+	hw_conf.i2c7 = NO_DEFINE;
+
+	parse_hw_config(cmdtp, &hw_conf);
+
+	{
+		printf("hw_conf.valid = %d\n", hw_conf.valid);
+		printf("hw_conf.pwm0 = %d\n", hw_conf.pwm0);
+		printf("hw_conf.pwm1 = %d\n", hw_conf.pwm1);
+		printf("hw_conf.uart2 = %d\n", hw_conf.uart2);
+		printf("hw_conf.uart4 = %d\n", hw_conf.uart4);
+		printf("hw_conf.spi1 = %d\n", hw_conf.spi1);
+		printf("hw_conf.spi2 = %d\n", hw_conf.spi2);
+		printf("hw_conf.i2c2 = %d\n", hw_conf.i2c2);
+		printf("hw_conf.i2c6 = %d\n", hw_conf.i2c6);
+		printf("hw_conf.i2c7 = %d\n", hw_conf.i2c7);
+		printf("hw_conf.dts_overlay_count = %d\n", hw_conf.dts_overlay_count);
+		if(hw_conf.dts_overlay_count)
+		{
+			for (i = 0; i < hw_conf.dts_overlay_count; i++)
+			{
+				printf("hw_conf.dts_overlay[%d] = %s\n", i, \
+								hw_conf.dts_overlay[i].dtbo_name);
+			}
+		}
+	}
+#endif
+#endif
 	label_print(label);
 
 	label->attempted = 1;
@@ -768,6 +1137,11 @@ static int label_boot(cmd_tbl_t *cmdtp, struct pxe_label *label)
 		}
 
 		if (fdtfile) {
+#ifdef CONFIG_OF_LIBFDT_OVERLAY
+#ifdef CONFIG_TARGET_ROCKPI4_RK3399
+			struct fdt_header *working_fdt;
+#endif
+#endif
 			int err = get_relfile_envaddr(cmdtp, fdtfile, "fdt_addr_r");
 			free(fdtfilefree);
 			if (err < 0) {
@@ -775,6 +1149,18 @@ static int label_boot(cmd_tbl_t *cmdtp, struct pxe_label *label)
 						label->name);
 				return 1;
 			}
+#ifdef CONFIG_OF_LIBFDT_OVERLAY
+#ifdef CONFIG_TARGET_ROCKPI4_RK3399
+			working_fdt = resize_working_fdt();
+			if(working_fdt != NULL)
+			{
+				if(hw_conf.valid)
+				{
+					handle_hw_conf(cmdtp, working_fdt, &hw_conf);
+				}
+			}
+#endif
+#endif
 		} else {
 			bootm_argv[3] = NULL;
 		}
@@ -1670,12 +2056,14 @@ static int do_sysboot(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 		pxefile_addr_str = argv[4];
 	}
 
+	printf("pxefile_addr_str = %s\n", pxefile_addr_str);
 	if (argc < 6)
 		filename = env_get("bootfile");
 	else {
 		filename = argv[5];
 		env_set("bootfile", filename);
 	}
+	printf("bootfile = %s\n", filename);
 
 	if (strstr(argv[3], "ext2"))
 		do_getfile = do_get_ext2;
