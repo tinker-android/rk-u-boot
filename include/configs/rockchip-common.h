@@ -125,7 +125,7 @@
 #define RKIMG_DET_BOOTDEV \
 	"rkimg_bootdev=" \
 	"dcache off; echo dcache off; pci e;nvme scan;"	\
-	"if nvme dev 0; then " \
+	"if nvme dev 0 && androidtest nvme 0; then " \
 		"setenv devtype nvme; setenv devnum 0;" \
 	"else " \
 	"dcache on; echo dcache on;" \
