@@ -25,6 +25,7 @@
 #include <bidram.h>
 #include <console.h>
 #include <sysmem.h>
+#include <asm/arch-rockchip/resource_img.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -1196,35 +1197,47 @@ int android_bootloader_boot_flow(struct blk_desc *dev_desc,
 	char vbmeta_partition[9] = {0};
 	disk_partition_t vbmeta_part_info;
 
-	if (trusty_read_vbootkey_enable_flag(&vboot_flag))
-		return -1;
+	if (trusty_read_vbootkey_enable_flag(&vboot_flag) == 0) {
 
-	if (vboot_flag) {
-		printf("SecureBoot enabled, AVB verify\n");
-		android_avb_set_enabled(true);
-		if (android_slot_verify(boot_partname, &load_address,
-					slot_suffix))
-			return -1;
-	} else {
-		strcat(vbmeta_partition, ANDROID_PARTITION_VBMETA);
-		strcat(vbmeta_partition, slot_suffix);
-		part_num = part_get_info_by_name(dev_desc, vbmeta_partition,
-						 &vbmeta_part_info);
-		if (part_num < 0) {
-			printf("SecureBoot disabled, AVB skip\n");
-			env_update("bootargs",
-				   "androidboot.verifiedbootstate=orange");
-			android_avb_set_enabled(false);
-			if (load_android_image(dev_desc, boot_partname,
-					       slot_suffix, &load_address))
-				return -1;
-		} else {
+		if (vboot_flag) {
 			printf("SecureBoot enabled, AVB verify\n");
 			android_avb_set_enabled(true);
 			if (android_slot_verify(boot_partname, &load_address,
-						slot_suffix))
+									slot_suffix))
 				return -1;
+		} else {
+			strcat(vbmeta_partition, ANDROID_PARTITION_VBMETA);
+			strcat(vbmeta_partition, slot_suffix);
+			part_num = part_get_info_by_name(dev_desc, vbmeta_partition,
+											 &vbmeta_part_info);
+			if (part_num < 0) {
+				printf("SecureBoot disabled, AVB skip\n");
+				env_update("bootargs",
+						   "androidboot.verifiedbootstate=orange");
+				android_avb_set_enabled(false);
+				if (load_android_image(dev_desc, boot_partname,
+									   slot_suffix, &load_address))
+					return -1;
+			} else {
+				printf("SecureBoot enabled, AVB verify\n");
+				android_avb_set_enabled(true);
+				if (android_slot_verify(boot_partname, &load_address,
+										slot_suffix))
+					return -1;
+			}
 		}
+	}else{
+		android_avb_set_enabled(false);
+		struct disk_partition system;
+		part_num = part_get_info_by_name(dev_desc, ANDROID_PARTITION_SYSTEM, &system);
+		if(part_num > 0){
+			char bootargs_uuid[60] = {0};
+			sprintf(bootargs_uuid, "root=PARTUUID=%s", system.uuid);
+			env_update("bootargs", bootargs_uuid);
+		}
+		env_update("bootargs", "androidboot.verifiedbootstate=orange");
+		if (load_android_image(dev_desc, boot_partname, slot_suffix, &load_address))
+			return -1;
 	}
 #else
 	/*
@@ -1266,9 +1279,24 @@ int android_bootloader_boot_flow(struct blk_desc *dev_desc,
 		printf("Can not get the fdt data from oem!\n");
 	}
 #else
-	ret = android_image_get_fdt((void *)load_address, &fdt_addr);
-	if (!ret)
+	if(IS_ENABLED(CONFIG_USING_KERNEL_DTB)){
+		ret = android_image_get_fdt((void *)load_address, &fdt_addr);
+		if (!ret)
+			env_set_hex("fdt_addr", fdt_addr);
+	} else{
+		fdt_addr = env_get_ulong("fdt_addr_r", 16, 0);
+		if (!fdt_addr) {
+			printf("%s:No Found FDT Load Address.\n", __func__);
+			return -1;
+		}
+		if(fdt_check_header((void *)fdt_addr)){
+			if(rockchip_read_dtb_file((void *)fdt_addr) < 0){
+				printf("%s dtb load fail\n", __func__);
+				return -1;
+			}
+		}
 		env_set_hex("fdt_addr", fdt_addr);
+	}
 #endif
 	android_bootloader_boot_kernel(load_address);
 

@@ -184,7 +184,11 @@ int get_bootdev_type(void)
 			boot_media = "sd";
 		else
 			boot_media = "emmc";
-	} else if (!strcmp(devtype, "rknand")) {
+	}else if (!strcmp(devtype, "nvme")) {
+        type = IF_TYPE_NVME;
+        boot_media = "nvme";
+	}
+	else if (!strcmp(devtype, "rknand")) {
 		type = IF_TYPE_RKNAND;
 		boot_media = "nand";
 	} else if (!strcmp(devtype, "spinand")) {
