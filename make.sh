@@ -528,6 +528,7 @@ pack_uboot_image()
 	fi
 
 	${RKTOOLS}/loaderimage --pack --uboot ${OUTDIR}/u-boot.bin uboot.img ${UBOOT_LOAD_ADDR} ${PLATFORM_UBOOT_IMG_SIZE}
+	${RKTOOLS}/loaderimage --pack --uboot ${OUTDIR}/u-boot.bin uboot_small.img ${UBOOT_LOAD_ADDR} --size 1024 1
 
 	# Delete u-boot.img and u-boot-dtb.img, which makes users not be confused with final uboot.img
 	if [ -f ${OUTDIR}/u-boot.img ]; then
@@ -543,7 +544,8 @@ pack_uboot_image()
 
 pack_idb_image()
 {
-	tools/mkimage -n "$BOARD" -T rksd -d $RKBIN/bin/rk33/rk3399_ddr_800MHz_v1.22.bin idbloader.img
+	local LOWERCASE=$(echo $RKCHIP | tr '[A-Z]' '[a-z]')
+	tools/mkimage -n "$LOWERCASE" -T rksd -d $RKBIN/bin/rk33/rk3399_ddr_800MHz_v1.22.bin idbloader.img
 	cat $RKBIN/bin/rk33/rk3399_miniloader_v1.19.bin >> idbloader.img
 }
 
@@ -569,6 +571,7 @@ pack_loader_image()
 		done
 	else
 		${RKTOOLS}/boot_merger ${BIN_PATH_FIXUP} $ini
+		${RKTOOLS}/boot_merger ${BIN_PATH_FIXUP} ${RKBIN}/RKBOOT/${RKCHIP_LOADER}MINIALL_SPINOR.ini
 		echo "pack loader okay! Input: $ini"
 	fi
 
@@ -590,7 +593,11 @@ pack_trust_image()
 		${RKTOOLS}/trust_merger ${PLATFORM_SHA} ${PLATFORM_RSA} ${PLATFORM_TRUST_IMG_SIZE} ${BIN_PATH_FIXUP} \
 					${PACK_IGNORE_BL32} ${RKBIN}/RKTRUST/${RKCHIP_TRUST}${PLATFORM_AARCH32}TRUST.ini
 
-		cd - && mv ${RKBIN}/trust.img ./trust.img
+		${RKTOOLS}/trust_merger ${PLATFORM_SHA} ${PLATFORM_RSA} --size 1024 1 ${BIN_PATH_FIXUP} \
+					${PACK_IGNORE_BL32} ${RKBIN}/RKTRUST/${RKCHIP_TRUST}${PLATFORM_AARCH32}TRUST_STRIP.ini
+
+		cd - && mv ${RKBIN}/trust.img ./trust.img && mv ${RKBIN}/trust_strip.img ./trust_strip.img
+
 		echo "pack trust okay! Input: ${RKBIN}/RKTRUST/${RKCHIP_TRUST}${PLATFORM_AARCH32}TRUST.ini"
 	# ARM uses loaderimage
 	else
@@ -627,6 +634,41 @@ pack_trust_image()
 	fi
 }
 
+pack_spi_uboot_image(){
+cat > spi.ini <<EOF
+[System]
+FwVersion=18.08.03
+BLANK_GAP=1
+FILL_BYTE=0
+[UserPart1]
+Name=IDBlock
+Flag=0
+Type=2
+File=../rkbin/bin/rk33/rk3399_ddr_800MHz_v1.22.bin,../rkbin/bin/rk33/rk3399_miniloader_spinor_v1.14.bin
+PartOffset=0x40
+PartSize=0x7C0
+[UserPart2]
+Name=uboot
+Type=0x20
+Flag=0
+File=./uboot_small.img
+PartOffset=0x1000
+PartSize=0x800
+[UserPart3]
+Name=trust
+Type=0x10
+Flag=0
+File=./trust_strip.img
+PartOffset=0x1800
+PartSize=0x800
+EOF
+
+${RKBIN_TOOLS}/firmwareMerger -P spi.ini ${OUTDIR}/
+echo "${OUTDIR}/Firmware.img ${OUTDIR}/uboot-trust-spi.img"
+mv ${OUTDIR}/Firmware.img ${OUTDIR}/uboot-trust-spi.img
+mv ${OUTDIR}/Firmware.md5 ${OUTDIR}/uboot-trust-spi.md5
+}
+
 finish()
 {
 	echo
@@ -647,4 +689,5 @@ pack_uboot_image
 pack_loader_image
 pack_idb_image
 pack_trust_image
+pack_spi_uboot_image
 finish
