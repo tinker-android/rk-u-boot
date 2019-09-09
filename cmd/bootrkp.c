@@ -89,10 +89,18 @@ static int do_rkimg_test(cmd_tbl_t *cmdtp, int flag, int argc,
 		      char * const argv[])
 {
 	struct blk_desc *dev_desc;
+	disk_partition_t part_info;
+
 	u32* buffer;
 	int ret = 0;
 
 	dev_desc = blk_get_dev(argv[1], simple_strtoul(argv[2], NULL, 16));
+
+	ret = part_get_info_by_name(dev_desc, "system", &part_info);
+	if(ret != -1){
+		printf("%s found system in SDcard\n", __func__);
+		return CMD_RET_SUCCESS;
+	}
 
 	buffer = memalign(ARCH_DMA_MINALIGN, 1024);
 	/* Read one block from begining of IDB data */
