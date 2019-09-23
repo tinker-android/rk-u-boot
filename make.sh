@@ -9,6 +9,14 @@ set -e
 BOARD=$1
 SUBCMD=$1
 FUNCADDR=$1
+
+if [[ "${BOARD}" == "rk3399pro_dual_3G" ]];then
+BOARD="rk3399pro_dual"
+SUBCMD="rk3399pro_dual"
+FUNCADDR="rk3399pro_dual"
+V_DDR_3G=true
+fi
+
 JOB=`sed -n "N;/processor/p" /proc/cpuinfo|wc -l`
 SUPPORT_LIST=`ls configs/*[r,p][x,v,k][0-9][0-9]*_defconfig`
 
@@ -519,6 +527,17 @@ pack_uboot_image()
 	echo "pack uboot okay! Input: ${OUTDIR}/u-boot.bin"
 }
 
+pack_idb_image()
+{
+	if [[ "true" == "${V_DDR_3G}" ]]; then
+		#statements
+		tools/mkimage -n "$BOARD" -T rksd -d $RKBIN/bin/rk33/rk3399pro_ddr_800MHz_v1.22_fix_row_3_4.bin idbloader.img
+	else
+		tools/mkimage -n "$BOARD" -T rksd -d $RKBIN/bin/rk33/rk3399pro_ddr_800MHz_v1.20.bin idbloader.img
+	fi
+	cat $RKBIN/bin/rk33/rk3399pro_miniloader_v1.15.bin >> idbloader.img
+}
+
 pack_loader_image()
 {
 	local mode=$1 files ini
@@ -542,6 +561,34 @@ pack_loader_image()
 	else
 		${RKTOOLS}/boot_merger ${BIN_PATH_FIXUP} ${RKBIN}/RKBOOT/${RKCHIP_LOADER}MINIALL.ini
 		echo "pack loader okay! Input: ${RKBIN}/RKBOOT/${RKCHIP_LOADER}MINIALL.ini"
+	fi
+
+	cd - && mv ${RKBIN}/*_loader_*.bin ./
+}
+
+pack_loader_image_3G()
+{
+	local mode=$1 files ini
+
+	if [ ! -f ${RKBIN}/RKBOOT/${RKCHIP_LOADER}MINIALL_FIXROW_34.ini ]; then
+		echo "pack loader failed! Can't find: ${RKBIN}/RKBOOT/${RKCHIP_LOADER}MINIALL_FIXROW_34.ini"
+		return
+	fi
+
+	cd ${RKBIN}
+
+	if [ "${mode}" = 'all' ]; then
+		files=`ls ${RKBIN}/RKBOOT/${RKCHIP_LOADER}*MINIALL*.ini`
+		for ini in $files
+		do
+			if [ -f "$ini" ]; then
+				${RKTOOLS}/boot_merger ${BIN_PATH_FIXUP} $ini
+				echo "pack loader okay! Input: $ini"
+			fi
+		done
+	else
+		${RKTOOLS}/boot_merger ${BIN_PATH_FIXUP} ${RKBIN}/RKBOOT/${RKCHIP_LOADER}MINIALL_FIXROW_34.ini
+		echo "pack loader okay! Input: ${RKBIN}/RKBOOT/${RKCHIP_LOADER}MINIALL_FIXROW_34.ini"
 	fi
 
 	cd - && mv ${RKBIN}/*_loader_*.bin ./
@@ -622,6 +669,11 @@ fixup_platform_configure
 sub_commands
 make CROSS_COMPILE=${TOOLCHAIN_GCC}  all --jobs=${JOB} ${OUTOPT}
 pack_uboot_image
-pack_loader_image
+if [[ "true" == "${V_DDR_3G}" ]]; then
+	pack_loader_image_3G
+else
+	pack_loader_image
+fi
+pack_idb_image
 pack_trust_image
 finish
