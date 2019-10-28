@@ -1196,6 +1196,16 @@ int android_bootloader_boot_flow(struct blk_desc *dev_desc,
 	char vbmeta_partition[9] = {0};
 	disk_partition_t vbmeta_part_info;
 
+	uint8_t lock_state = 0xff;
+    if(rk_avb_read_lock_state(&lock_state) != 0 || lock_state == 0){
+        printf("try unlock device\n");
+        if (!rk_avb_write_lock_state(1)) {
+            printf("unlock device success\n");
+        }
+    }else{
+        printf("device is unlock\n");
+    }
+
 	if (trusty_read_vbootkey_enable_flag(&vboot_flag))
 		return -1;
 
