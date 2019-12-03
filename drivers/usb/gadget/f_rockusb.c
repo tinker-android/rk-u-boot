@@ -363,44 +363,58 @@ static int rkusb_do_vs_write(struct fsg_common *common)
 				rc = vendor_storage_write(vhead->id,
 							  (char __user *)data,
 							  vhead->size);
-				if (rc < 0)
+				if (rc < 0) {
+					curlun->sense_data = SS_WRITE_ERROR;
 					return -EIO;
+				}
 			} else if (type == 1){
 				/* RPMB */
 				rc =
 				write_keybox_to_secure_storage((u8 *)data,
 							       vhead->size);
-				if (rc < 0)
+				if (rc < 0) {
+					curlun->sense_data = SS_WRITE_ERROR;
 					return -EIO;
+				}
 			} else if (type == 2) {
 
 				if (memcmp(data, "RKSN", 4) != 0) {
 					printf("tag not equal\n");
+					curlun->sense_data = SS_WRITE_ERROR;
 					return -EIO;
 				}
 
 				if (trusty_write_toybrick_seed((uint32_t *)((char __user *)data+8+64+6)) != 0) {//Seed
 					printf("trusty_write_toybrick_seed error!");
+					curlun->sense_data = SS_WRITE_ERROR;
 					return -EIO;
 				}
 
 				rc = vendor_storage_write(TOYBRICK_SN_ID,//SN
 							  (char __user *)data+8,
 							  64);
-				if (rc < 0)
+				if (rc < 0) {
+					curlun->sense_data = SS_WRITE_ERROR;
 					return -EIO;
+				}
 
 				rc = vendor_storage_write(TOYBRICK_MAC_ID,//LAN MAC
 							  (char __user *)data+8+64,
 							  6);
-				if (rc < 0)
+				if (rc < 0) {
+					curlun->sense_data = SS_WRITE_ERROR;
 					return -EIO;
+				}
+
 
 				rc = vendor_storage_write(TOYBRICK_ACT_ID,//Activation Code
 							  (char __user *)data+8+64+6+12+16,
 							  8+256);
-				if (rc < 0)
+				if (rc < 0) {
+					curlun->sense_data = SS_WRITE_ERROR;
 					return -EIO;
+				}
+
 			} 
 
 			common->residue -= common->data_size;
@@ -461,43 +475,55 @@ static int rkusb_do_vs_read(struct fsg_common *common)
 			rc = vendor_storage_read(vhead->id,
 						 (char __user *)data,
 						 common->data_size);
-			if (!rc)
+			if (!rc) {
+				curlun->sense_data = SS_UNRECOVERED_READ_ERROR;
 				return -EIO;
+			}
 			vhead->size = rc;
 		} else if (type == 1){
 			/* RPMB */
 			rc =
 			read_raw_data_from_secure_storage((u8 *)data,
 							  common->data_size);
-			if (!rc)
+			if (!rc) {
+				curlun->sense_data = SS_UNRECOVERED_READ_ERROR;
 				return -EIO;
+			}
 			vhead->size = rc;
 		} else if (type == 2) {
 
 			rc = vendor_storage_read(TOYBRICK_SN_ID,//SN
 						 (char __user *)data,
 						 64);
-			if (!rc)
+			if (!rc) {
+				curlun->sense_data = SS_UNRECOVERED_READ_ERROR;
 				return -EIO;
+			}
 
 			rc = vendor_storage_read(TOYBRICK_MAC_ID,//LAN MAC
 						 (char __user *)data+64,
 						 6);
-			if (!rc)
+			if (!rc) {
+				curlun->sense_data = SS_UNRECOVERED_READ_ERROR;
 				return -EIO;
+			}
+
 
 			//Seed, not read for security
 
 			if (trusty_read_toybrick_cpu_id((uint8_t *)data+64+6+12) != 0) {//Chip id
 				printf("trusty_read_toybrick_cpu_id error!");
+				curlun->sense_data = SS_UNRECOVERED_READ_ERROR;
 				return -EIO;
 			}
 
 			rc = vendor_storage_read(TOYBRICK_ACT_ID,//Activation Code
 						 (char __user *)data+64+6+12+16,
 						 8+256);
-			if (!rc)
+			if (!rc) {
+				curlun->sense_data = SS_UNRECOVERED_READ_ERROR;
 				return -EIO;
+			}
 
 			vhead->size = common->data_size-8;
 		} else if (type == 3) {
