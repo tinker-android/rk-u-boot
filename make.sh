@@ -584,13 +584,21 @@ pack_uboot_image()
 
 pack_idb_image()
 {
+	local ini bin file
 	if [[ "true" == "${V_DDR_3G}" ]]; then
-		#statements
-		tools/mkimage -n "$BOARD" -T rksd -d $RKBIN/bin/rk33/rk3399pro_ddr_800MHz_v1.22_fix_row_3_4.bin idbloader.img
+		ini=${RKBIN}/RKBOOT/${RKCHIP_LOADER}MINIALL_FIXROW_34.ini
 	else
-		tools/mkimage -n "$BOARD" -T rksd -d $RKBIN/bin/rk33/rk3399pro_ddr_800MHz_v1.20.bin idbloader.img
+		ini=${RKBIN}/RKBOOT/${RKCHIP_LOADER}MINIALL.ini
 	fi
-	cat $RKBIN/bin/rk33/rk3399pro_miniloader_v1.15.bin >> idbloader.img
+
+	file=`cat ${ini} | grep FlashData=`
+	bin=${file#*FlashData=tools\/rk_tools}
+	echo "mkimage -n "$BOARD" -T rksd -d $RKBIN${bin} idbloader.img"
+	tools/mkimage -n "$BOARD" -T rksd -d $RKBIN${bin} idbloader.img
+	file=`cat ${ini} | grep FlashBoot=`
+	bin=${file#*FlashBoot=tools\/rk_tools}
+	echo "cat $RKBIN${bin} >> idbloader.img"
+	cat $RKBIN${bin} >> idbloader.img
 }
 
 pack_uboot_itb_image()
