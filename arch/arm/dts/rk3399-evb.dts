@@ -19,34 +19,34 @@
 		     "google,rk3399evb-rev2";
 
 	/* RK3399 evb board */
-	rk_key0 {
-		u-boot,dm-pre-reloc;
-		compatible = "rockchip,key";
-		status = "okay";
-		io-channels = <&saradc 1>;
+	// rk_key0 {
+	// 	u-boot,dm-pre-reloc;
+	// 	compatible = "rockchip,key";
+	// 	status = "okay";
+	// 	io-channels = <&saradc 1>;
 
-		vol-up-key0 {
-			u-boot,dm-pre-reloc;
-			linux,code = <KEY_VOLUMEUP>;
-			label = "volume up";
-			rockchip,adc_value = <1>;
-		};
-	};
+	// 	vol-up-key0 {
+	// 		u-boot,dm-pre-reloc;
+	// 		linux,code = <KEY_VOLUMEUP>;
+	// 		label = "volume up";
+	// 		rockchip,adc_value = <1>;
+	// 	};
+	// };
 
 	/* RK3399PRO evb board */
-	rk_key1 {
-		u-boot,dm-pre-reloc;
-		compatible = "rockchip,key";
-		status = "okay";
-		io-channels = <&saradc 2>;
+	// rk_key1 {
+	// 	u-boot,dm-pre-reloc;
+	// 	compatible = "rockchip,key";
+	// 	status = "okay";
+	// 	io-channels = <&saradc 2>;
 
-		vol-up-key1 {
-			u-boot,dm-pre-reloc;
-			linux,code = <KEY_VOLUMEUP>;
-			label = "volume up";
-			rockchip,adc_value = <10>;
-		};
-	};
+	// 	vol-up-key1 {
+	// 		u-boot,dm-pre-reloc;
+	// 		linux,code = <KEY_VOLUMEUP>;
+	// 		label = "volume up";
+	// 		rockchip,adc_value = <10>;
+	// 	};
+	// };
 
 	vdd_center: vdd-center {
 		compatible = "pwm-regulator";
