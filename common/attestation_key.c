@@ -10,6 +10,9 @@
 #include <common.h>
 #include <malloc.h>
 
+#include <android_avb/avb_ops_user.h>
+#include <android_avb/rk_avb_ops_user.h>
+
 #include <keymaster.h>
 
 /* attestation data offset */
@@ -388,6 +391,9 @@ atap_result load_attestation_key(struct blk_desc *dev_desc,
 		printf("StorageWriteLba failed\n");
 		return ATAP_RESULT_ERROR_BLOCK_WRITE;
 	}
+
+        uint8_t lock_state = 0;
+        rk_avb_write_lock_state(lock_state);
 
 	return ATAP_RESULT_OK;
 }
