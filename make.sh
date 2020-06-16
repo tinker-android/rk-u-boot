@@ -545,7 +545,7 @@ pack_uboot_image()
 pack_idb_image()
 {
 	local LOWERCASE=$(echo $RKCHIP | tr '[A-Z]' '[a-z]')
-	tools/mkimage -n "$LOWERCASE" -T rksd -d $RKBIN/bin/rk33/rk3399_ddr_800MHz_v1.22.bin idbloader.img
+	tools/mkimage -n "$LOWERCASE" -T rksd -d $RKBIN/bin/rk33/rk3399_ddr_800MHz_v1.20.bin idbloader.img
 	cat $RKBIN/bin/rk33/rk3399_miniloader_v1.19.bin >> idbloader.img
 }
 
@@ -644,7 +644,7 @@ FILL_BYTE=0
 Name=IDBlock
 Flag=0
 Type=2
-File=../rkbin/bin/rk33/rk3399_ddr_800MHz_v1.22.bin,../rkbin/bin/rk33/rk3399_miniloader_spinor_v1.14.bin
+File=../rkbin/bin/rk33/rk3399_ddr_800MHz_v1.20.bin,../rkbin/bin/rk33/rk3399_miniloader_spinor_v1.14.bin
 PartOffset=0x40
 PartSize=0x7C0
 [UserPart2]
