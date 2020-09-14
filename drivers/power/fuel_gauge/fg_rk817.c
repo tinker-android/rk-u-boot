@@ -1199,7 +1199,8 @@ static int rk817_bat_is_exist(struct udevice *dev){
         printf("reg bat exist, check bat ts\n");
         uint32_t h_ts = rk817_bat_read(battery, BAT_TS_H);
         uint32_t l_ts = rk817_bat_read(battery, BAT_TS_L);
-        if(h_ts == 0xFFu && l_ts == 0xFFu){
+        printf("reg bat exist, check bat ts(0x%x%x)\n", h_ts, l_ts);
+        if(h_ts >= 0xFAu && l_ts >= 0xFAu){
             return 0;
         }
 
