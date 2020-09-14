@@ -136,6 +136,7 @@ static int dbg_enable = 0;
 #define BAT_CON			BIT(4)
 
 #define USB_CTRL_REG		0x00E5
+#define PMIC_CHRG_STS       0x00eb
 #define PMIC_SYS_STS		0x00f0
 #define PLUG_IN_STS		BIT(6)
 
@@ -143,6 +144,7 @@ static int dbg_enable = 0;
 #define CHRG_TERM_K		650
 #define CHRG_FULL_K		400
 #define CHARGE_FINISH		(0x04 << 4)
+#define BAT_EXS(v)          ((v >> 7u) & 0x1u)
 
 /* CALI PARAM */
 #define FINISH_CALI_CURR	1500
@@ -626,7 +628,7 @@ static void rk817_bat_gas_gaugle_enable(struct rk817_battery_device *battery)
 	int value;
 
 	value = rk817_bat_read(battery, ADC_CONFIG0);
-	rk817_bat_write(battery, ADC_CONFIG0, value | 0x80);
+	rk817_bat_write(battery, ADC_CONFIG0, value | 0xa0);
 }
 
 static bool is_rk817_bat_first_pwron(struct rk817_battery_device *battery)
@@ -1189,6 +1191,23 @@ out:
 	return;
 }
 
+static int rk817_bat_is_exist(struct udevice *dev){
+    struct rk817_battery_device *battery = dev_get_priv(dev);
+
+    int sts = rk817_bat_read(battery, PMIC_CHRG_STS);
+    if(BAT_EXS((unsigned int)sts)){
+        printf("reg bat exist, check bat ts\n");
+        uint32_t h_ts = rk817_bat_read(battery, BAT_TS_H);
+        uint32_t l_ts = rk817_bat_read(battery, BAT_TS_L);
+        if(h_ts == 0xFFu && l_ts == 0xFFu){
+            return 0;
+        }
+
+        return 1;
+    }
+    return 0;
+}
+
 static int rk817_bat_update_get_soc(struct udevice *dev)
 {
 	struct rk817_battery_device *battery = dev_get_priv(dev);
@@ -1220,6 +1239,7 @@ static struct dm_fuel_gauge_ops fg_ops = {
 	.get_voltage = rk817_bat_update_get_voltage,
 	.get_current = rk817_bat_update_get_current,
 	.get_chrg_online = rk817_bat_update_get_chrg_online,
+	.bat_is_exist = rk817_bat_is_exist,
 };
 
 static int rk817_fg_ofdata_to_platdata(struct udevice *dev)
