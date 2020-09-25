@@ -11,6 +11,7 @@ static int do_rkimg_test(cmd_tbl_t *cmdtp, int flag,
 			 int argc, char *const argv[])
 {
 	struct blk_desc *dev_desc;
+	disk_partition_t part_info;
 	u32 *buffer;
 	int ret;
 
@@ -21,6 +22,12 @@ static int do_rkimg_test(cmd_tbl_t *cmdtp, int flag,
 	if (!dev_desc) {
 		printf("%s: dev_desc is NULL!\n", __func__);
 		return CMD_RET_FAILURE;
+	}
+
+	ret = part_get_info_by_name(dev_desc, "super", &part_info);
+	if(ret != -1){
+		printf("%s found super in TF/USB\n", __func__);
+		return CMD_RET_SUCCESS;
 	}
 
 	/* read one block from beginning of IDB data */
