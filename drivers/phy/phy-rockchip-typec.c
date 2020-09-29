@@ -301,6 +301,14 @@ static int rockchip_usb3_phy_power_on(struct phy *phy)
 	int ret;
 	int tries;
 
+	if(tcphy->vbus_supply){
+        ret = regulator_set_enable(tcphy->vbus_supply, true);
+        if (ret) {
+            pr_err("%s: Failed to set VBus supply\n", __func__);
+            return ret;
+        }
+	}
+
 	for (tries = 0; tries < POWER_ON_TRIES; tries++) {
 		ret = _rockchip_usb3_phy_power_on(tcphy);
 		if (!ret)
@@ -320,6 +328,13 @@ static int rockchip_usb3_phy_power_off(struct phy *phy)
 
 	mutex_lock(&tcphy->lock);
 
+    if(tcphy->vbus_supply){
+        int ret = regulator_set_enable(tcphy->vbus_supply, false);
+        if (ret) {
+            pr_err("%s: Failed to set VBus supply\n", __func__);
+        }
+    }
+
 	if (tcphy->mode == MODE_DISCONNECT)
 		goto unlock;
 
@@ -331,9 +346,23 @@ unlock:
 	return 0;
 }
 
+static int rockchip_usb3_phy_of_xlate(struct phy *phy,
+                                     struct ofnode_phandle_args *args){
+    const char *dev_name = phy->dev->name;
+    struct udevice *parent = phy->dev->parent;
+    struct rockchip_typec_phy *rphy = dev_get_priv(parent);
+
+    if (!strcasecmp(dev_name, "usb3-port")) {
+        device_get_supply_regulator(phy->dev, "phy-supply", &rphy->vbus_supply);
+    }
+
+    return 0;
+}
+
 static const struct phy_ops rockchip_usb3_phy_ops = {
 	.power_on	= rockchip_usb3_phy_power_on,
 	.power_off	= rockchip_usb3_phy_power_off,
+	.of_xlate   = rockchip_usb3_phy_of_xlate,
 };
 
 int rockchip_u3phy_uboot_init(const char *name)

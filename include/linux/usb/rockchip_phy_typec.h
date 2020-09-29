@@ -29,6 +29,7 @@ struct rockchip_typec_phy {
 	struct udevice *dev;
 	void __iomem *base;
 	void __iomem *grf_regs;
+    struct udevice*  vbus_supply;
 	struct reset_ctl uphy_rst;
 	struct reset_ctl pipe_rst;
 	struct reset_ctl tcphy_rst;
