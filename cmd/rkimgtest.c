@@ -24,12 +24,6 @@ static int do_rkimg_test(cmd_tbl_t *cmdtp, int flag,
 		return CMD_RET_FAILURE;
 	}
 
-	ret = part_get_info_by_name(dev_desc, "super", &part_info);
-	if(ret != -1){
-		printf("%s found super in TF/USB\n", __func__);
-		return CMD_RET_SUCCESS;
-	}
-
 	/* read one block from beginning of IDB data */
 	buffer = memalign(ARCH_DMA_MINALIGN, 1024);
 	ret = blk_dread(dev_desc, 64, 2, buffer);
@@ -42,18 +36,30 @@ static int do_rkimg_test(cmd_tbl_t *cmdtp, int flag,
 	if (buffer[0] == 0xFCDC8C3B) {
 		ret = CMD_RET_SUCCESS;
 
-		if (!strcmp("mmc", argv[1]))
-			printf("Found IDB in SDcard\n");
-		else
-			printf("Found IDB in U-disk\n");
-
-		/* TAG in IDB */
-		if (0 == buffer[128 + 104 / 4]) {
-			if (!strcmp("mmc", argv[1]))
-				env_update("bootargs", "sdfwupdate");
-			else
-				env_update("bootargs", "usbfwupdate");
+		if (!strcmp("mmc", argv[1])){
+            printf("Found IDB in SDcard\n");
+        } else if (!strcmp("nvme", argv[1])){
+            printf("Found IDB in NVME\n");
+		} else if (!strcmp("usb", argv[1])){
+            printf("Found IDB in USB\n");
 		}
+
+        // add by ahren to check storage is android boot system
+        if(!part_get_info_by_name(dev_desc, "super", &part_info)){
+            printf("found super part.\n");
+            ret = CMD_RET_SUCCESS;
+        }else{
+            /* TAG in IDB */
+            if (0 == buffer[128 + 104 / 4]) {
+                if (!strcmp("mmc", argv[1]))
+                    env_update("bootargs", "sdfwupdate");
+                else
+                    env_update("bootargs", "usbfwupdate");
+                ret = CMD_RET_SUCCESS;
+            }else{
+                ret = CMD_RET_FAILURE;
+            }
+        }
 	} else {
 		ret = CMD_RET_FAILURE;
 	}
