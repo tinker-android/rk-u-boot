@@ -797,7 +797,7 @@ static int rockchip_pcie_init_port(struct pcie_rockchip *rockchip)
 		#endif
 	}
 
-	timeout = 2000;
+	timeout = 800;
 	while (--timeout) {
 		status = rockchip_pcie_read(rockchip,
 					    PCIE_CLIENT_BASIC_STATUS1);
