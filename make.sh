@@ -752,6 +752,72 @@ function pack_fit_image()
 	fi
 }
 
+function pack_spi_images() {
+	  rm uboot_small.img -f
+	  LOAD_ADDR=`sed -n "/CONFIG_SYS_TEXT_BASE=/s/CONFIG_SYS_TEXT_BASE=//p" include/autoconf.mk|tr -d '\r'`
+	  ./tools/loaderimage --pack --uboot u-boot.bin uboot_small.img ${LOAD_ADDR} --size 1024 1
+
+	  ini=${RKBIN}/RKTRUST/${RKCHIP_TRUST}TRUST_STRIP.ini
+	  DRAM_BASE=`sed -n "/CONFIG_SYS_SDRAM_BASE=/s/CONFIG_SYS_SDRAM_BASE=//p" include/autoconf.mk|tr -d '\r'`
+    rm trust_strip.img -f
+    cd ${RKBIN}
+    if [ "${ARM64_TRUSTZONE}" == "y" ]; then
+      ${SCRIPT_ATF} --ini ${ini} ${PLAT_SHA} ${PLAT_RSA} --size 1024 1
+    else
+      ${SCRIPT_TOS} --ini ${ini} --base ${DRAM_BASE} --size 1024 1
+    fi
+    cd -
+    if [ -f ${RKBIN}/trust_strip.img ]; then
+      mv ${RKBIN}/trust_strip.img ./
+    fi
+
+    INI=${INI_LOADER}
+    INI_SPI=${RKBIN}/RKBOOT/${RKCHIP_LOADER}MINIALL_SPINOR.ini
+    TPL_BIN=${RKBIN}/`sed -n "/FlashData=/s/FlashData=//p" ${INI} | tr -d '\r'`
+    SPL_BIN=${RKBIN}/`sed -n "/FlashBoot=/s/FlashBoot=//p" ${INI_SPI} | tr -d '\r'`
+
+    cd ${RKBIN}
+    echo "${SCRIPT_LOADER} --ini ${INI_SPI}"
+    ${SCRIPT_LOADER} --ini ${INI_SPI}
+    cd -
+    if [ -f ${RKBIN}/*_loader_*.bin ]; then
+      mv ${RKBIN}/*_loader_*.bin ../
+    fi
+
+    cat > spi.ini <<EOF
+[System]
+FwVersion=18.08.03
+BLANK_GAP=1
+FILL_BYTE=0
+[UserPart1]
+Name=IDBlock
+Flag=0
+Type=2
+File=${TPL_BIN},${SPL_BIN}
+PartOffset=0x40
+PartSize=0x7C0
+[UserPart2]
+Name=uboot
+Type=0x20
+Flag=0
+File=./uboot_small.img
+PartOffset=0x1000
+PartSize=0x800
+[UserPart3]
+Name=trust
+Type=0x10
+Flag=0
+File=./trust_strip.img
+PartOffset=0x1800
+PartSize=0x800
+EOF
+
+    ./tools/firmwareMerger -P spi.ini .
+    echo "pack uboot-trust-spi.img"
+    mv Firmware.img uboot-trust-spi.img
+    mv Firmware.md5 uboot-trust-spi.md5
+}
+
 function handle_args_late()
 {
 	ARG_LIST_FIT="${ARG_LIST_FIT} --ini-trust ${INI_TRUST} --ini-loader ${INI_LOADER}"
@@ -774,6 +840,7 @@ function pack_images()
 		pack_trust_image
 		pack_loader_image
 		pack_idb_imgage
+		pack_spi_images
 	elif [ "${PLAT_TYPE}" == "FIT" ]; then
 		pack_fit_image ${ARG_LIST_FIT}
 	fi
