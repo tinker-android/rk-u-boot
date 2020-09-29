@@ -63,6 +63,7 @@
 
 	vcc5v0_host: vcc5v0-host-regulator {
 		compatible = "regulator-fixed";
+		u-boot,dm-pre-reloc;
 		enable-active-high;
 		gpio = <&gpio4 25 GPIO_ACTIVE_HIGH>;
 		pinctrl-names = "default";
@@ -412,14 +413,6 @@
 	status = "okay";
 };
 
-&usb_host1_ehci {
-	status = "okay";
-};
-
-&usb_host1_ohci {
-	status = "okay";
-};
-
 &u2phy1 {
 	status = "okay";
 
@@ -435,4 +428,10 @@
 
 &tcphy1 {
 	status = "okay";
+};
+
+&tcphy1_usb3{
+    u-boot,dm-pre-reloc;
+    phy-supply = <&vcc5v0_host>;
+    status = "okay";
 };

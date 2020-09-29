@@ -70,6 +70,7 @@
 		pinctrl-0 = <&host_vbus_drv>;
 		regulator-name = "vcc5v0_host";
 		regulator-always-on;
+		regulator-boot-on;
 	};
 
 	vcc_otg_vbus: otg-vbus-regulator {
@@ -412,14 +413,6 @@
 	status = "okay";
 };
 
-&usb_host1_ehci {
-	status = "okay";
-};
-
-&usb_host1_ohci {
-	status = "okay";
-};
-
 &u2phy1 {
 	status = "okay";
 
@@ -435,4 +428,10 @@
 
 &tcphy1 {
 	status = "okay";
+};
+
+&tcphy1_usb3{
+    u-boot,dm-pre-reloc;
+    phy-supply = <&vcc5v0_host>;
+    status = "okay";
 };
