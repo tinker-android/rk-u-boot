@@ -77,6 +77,30 @@ static void boot_devtype_init(void)
 #ifdef CONFIG_DM_MMC
 	mmc_initialize(gd->bd);
 #endif
+
+#ifdef CONFIG_USB_STORAGE
+    run_command("usb start", 0);
+    if(!run_command("usb dev 0", 0) && !run_command("rkimgtest usb 0", 0)){
+        printf("find bootable usb storage\n");
+        env_set("devtype", "usb");
+        env_set("devnum", "0");
+        goto finish;
+    }
+#endif
+#ifdef CONFIG_NVME
+    if(!run_command("dcache off", 0)){
+        printf("dcache off\n");
+        run_command("pci e", 0);
+        run_command("nvme scan", 0);
+        printf("dcache on\n");
+        if(!run_command("nvme dev 0", 0) && !run_command("rkimgtest nvme 0", 0)){
+            printf("find bootable nvme storage\n");
+            env_set("devtype", "nvme");
+            env_set("devnum", "0");
+            goto finish;
+        }
+    }
+#endif
 	ret = run_command_list(devtype_num_set, -1, 0);
 	if (ret) {
 		/* Set default dev type/num if command not valid */
@@ -130,8 +154,13 @@ static int get_bootdev_type(void)
 	} else if (!strcmp(devtype, "mtd")) {
 		type = IF_TYPE_MTD;
 		boot_media = "mtd";
-	} else {
+	} else if (!strcmp(devtype, "nvme")){
 		/* Add new to support */
+		type = IF_TYPE_NVME;
+		boot_media = "nvme";
+	} else if (!strcmp(devtype, "usb")){
+		type = IF_TYPE_USB;
+		boot_media = "usb";
 	}
 
 	if (!appended && boot_media) {
