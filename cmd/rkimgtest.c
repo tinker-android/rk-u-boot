@@ -45,7 +45,7 @@ static int do_rkimg_test(cmd_tbl_t *cmdtp, int flag,
 		}
 
         // add by ahren to check storage is android boot system
-        if(!part_get_info_by_name(dev_desc, "super", &part_info)){
+        if(part_get_info_by_name(dev_desc, "super", &part_info) != -1){
             printf("found super part.\n");
             ret = CMD_RET_SUCCESS;
         }else{
